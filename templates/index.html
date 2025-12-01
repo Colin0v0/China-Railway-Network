@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>中国高铁网络规划与分析系统</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: 'Microsoft YaHei', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .sidebar {
+            height: 100vh;
+            background: white;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            z-index: 1000;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        #main-map {
+            height: 100vh;
+            width: 100%;
+        }
+        .card-custom {
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            margin-bottom: 15px;
+            transition: transform 0.2s;
+        }
+        .card-custom:hover {
+            transform: translateY(-2px);
+        }
+        .result-card {
+            display: none;
+            animation: slideIn 0.3s ease-out;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .hub-bar {
+            height: 8px;
+            border-radius: 4px;
+            background: #e9ecef;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+        .hub-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ffc107, #fd7e14);
+            width: 0;
+            transition: width 1s ease-out;
+        }
+        .badge-time { background-color: #dc3545; }
+        .badge-cost { background-color: #198754; }
+        
+        /* Loading overlay */
+        #loading {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.9);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+
+<!-- Loading Screen -->
+<div id="loading">
+    <div class="spinner-border text-primary mb-3" role="status"></div>
+    <h5 class="text-muted">正在加载高铁网络数据...</h5>
+</div>
+
+<div class="container-fluid p-0">
+    <div class="row g-0">
+        <!-- Sidebar -->
+        <div class="col-md-3 sidebar">
+            <div class="d-flex align-items-center mb-4">
+                <i class="fas fa-subway fa-2x text-primary me-3"></i>
+                <div>
+                    <h5 class="mb-0 fw-bold">中国高铁网络</h5>
+                    <small class="text-muted">规划与分析系统</small>
+                </div>
+            </div>
+
+            <!-- Tabs -->
+            <ul class="nav nav-pills mb-4 nav-fill" id="pills-tab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="pills-route-tab" data-bs-toggle="pill" data-bs-target="#pills-route" type="button">
+                        <i class="fas fa-route me-1"></i>路径规划
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="pills-analysis-tab" data-bs-toggle="pill" data-bs-target="#pills-analysis" type="button">
+                        <i class="fas fa-chart-bar me-1"></i>枢纽分析
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="pills-tabContent">
+                <!-- Route Planning Tab -->
+                <div class="tab-pane fade show active" id="pills-route">
+                    <div class="card card-custom bg-light">
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label small text-muted">起点城市</label>
+                                <select class="form-select" id="startCity">
+                                    <option selected disabled>选择起点...</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small text-muted">终点城市</label>
+                                <select class="form-select" id="endCity">
+                                    <option selected disabled>选择终点...</option>
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label small text-muted">算法选择</label>
+                                <select class="form-select" id="algoSelect">
+                                    <option value="dijkstra" selected>Dijkstra (标准双目标)</option>
+                                    <option value="astar">A* Search (启发式搜索)</option>
+                                    <option value="bfs">BFS (最少中转)</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-primary w-100" onclick="calculatePath()">
+                                <i class="fas fa-search me-2"></i>开始规划
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Results -->
+                    <div id="routeResults" class="result-card">
+                        <div class="card card-custom border-start border-4 border-danger">
+                            <div class="card-body">
+                                <h6 class="card-title d-flex justify-content-between">
+                                    <span><i class="fas fa-clock text-danger me-2"></i>时间最短</span>
+                                    <span class="badge badge-time" id="timeVal"></span>
+                                </h6>
+                                <p class="card-text small text-muted mb-2" id="timePath"></p>
+                                <div class="d-flex justify-content-between small">
+                                    <span>票价: <span id="timeCost" class="fw-bold"></span>元</span>
+                                    <span>经停: <span id="timeStops"></span>站</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card card-custom border-start border-4 border-success">
+                            <div class="card-body">
+                                <h6 class="card-title d-flex justify-content-between">
+                                    <span><i class="fas fa-piggy-bank text-success me-2"></i>票价最低</span>
+                                    <span class="badge badge-cost" id="costVal"></span>
+                                </h6>
+                                <p class="card-text small text-muted mb-2" id="costPath"></p>
+                                <div class="d-flex justify-content-between small">
+                                    <span>耗时: <span id="costTime" class="fw-bold"></span>小时</span>
+                                    <span>经停: <span id="costStops"></span>站</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="alert alert-info small" id="recommendation">
+                            <i class="fas fa-info-circle me-1"></i>
+                            <span id="recText"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analysis Tab -->
+                <div class="tab-pane fade" id="pills-analysis">
+                    <div class="card card-custom">
+                        <div class="card-body">
+                            <h6 class="card-title mb-3">🏆 网络枢纽 Top 5</h6>
+                            <p class="small text-muted">基于介数中心性 (Betweenness Centrality) 算法分析</p>
+                            <div id="hubList">
+                                <!-- Hub items will be injected here -->
+                            </div>
+                            <button class="btn btn-outline-primary w-100 mt-3 btn-sm" onclick="loadHubs()">
+                                <i class="fas fa-sync-alt me-1"></i>重新分析
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="card card-custom mt-3">
+                        <div class="card-body">
+                            <h6 class="card-title">📊 网络统计</h6>
+                            <ul class="list-unstyled small mb-0 mt-3">
+                                <li class="mb-2 d-flex justify-content-between">
+                                    <span>城市节点</span>
+                                    <span class="fw-bold" id="nodeCount">-</span>
+                                </li>
+                                <li class="mb-2 d-flex justify-content-between">
+                                    <span>高铁线路</span>
+                                    <span class="fw-bold" id="edgeCount">-</span>
+                                </li>
+                                <li class="d-flex justify-content-between">
+                                    <span>连通性</span>
+                                    <span class="text-success fw-bold">完全连通</span>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-auto pt-4 text-center">
+                <small class="text-muted" style="font-size: 0.75rem;">
+                    &copy; 2025 China Railway Network System<br>
+                    Graph Theory Course Design
+                </small>
+            </div>
+        </div>
+
+        <!-- Map Area -->
+        <div class="col-md-9 position-relative">
+            <div id="main-map"></div>
+            
+            <!-- Map Controls -->
+            <div class="position-absolute top-0 end-0 m-3">
+                <div class="btn-group bg-white shadow rounded">
+                    <button class="btn btn-sm btn-light" onclick="resetMap()" title="重置视图">
+                        <i class="fas fa-compress-arrows-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<!-- China Map Data -->
+<script src="https://assets.pyecharts.org/assets/maps/china.js"></script>
+
+<script>
+    let myChart = null;
+    let graphData = null;
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', function() {
+        initMap();
+        loadCities();
+        loadGraphData();
+    });
+
+    function initMap() {
+        myChart = echarts.init(document.getElementById('main-map'));
+        window.addEventListener('resize', function() {
+            myChart.resize();
+        });
+    }
+
+    function loadCities() {
+        fetch('/api/cities')
+            .then(response => response.json())
+            .then(cities => {
+                const startSelect = document.getElementById('startCity');
+                const endSelect = document.getElementById('endCity');
+                
+                cities.forEach(city => {
+                    startSelect.add(new Option(city, city));
+                    endSelect.add(new Option(city, city));
+                });
+            });
+    }
+
+    function loadGraphData() {
+        fetch('/api/graph-data')
+            .then(response => response.json())
+            .then(data => {
+                graphData = data;
+                renderMap(data);
+                
+                // Update stats
+                document.getElementById('nodeCount').innerText = data.nodes.length;
+                document.getElementById('edgeCount').innerText = data.edges.length;
+                
+                document.getElementById('loading').style.display = 'none';
+            });
+    }
+
+    function renderMap(data, highlightPath = null) {
+        const lines = [];
+        const points = data.nodes;
+        
+        // Process edges
+        data.edges.forEach(edge => {
+            const sourceNode = points.find(p => p.name === edge.source);
+            const targetNode = points.find(p => p.name === edge.target);
+            
+            if (sourceNode && targetNode) {
+                lines.push({
+                    coords: [sourceNode.value, targetNode.value],
+                    lineStyle: {
+                        color: '#ccc',
+                        width: 1,
+                        opacity: 0.4,
+                        curveness: 0.2
+                    }
+                });
+            }
+        });
+
+        // Highlight path if exists
+        const highlightLines = [];
+        
+        if (highlightPath) {
+            // Time path (Red)
+            if (highlightPath.time_details) {
+                highlightPath.time_details.forEach(segment => {
+                    const source = points.find(p => p.name === segment.source);
+                    const target = points.find(p => p.name === segment.target);
+                    if (source && target) {
+                        highlightLines.push({
+                            coords: [source.value, target.value],
+                            lineStyle: {
+                                color: '#dc3545',
+                                width: 4,
+                                opacity: 1,
+                                curveness: 0.2
+                            },
+                            label: {
+                                show: true,
+                                position: 'middle',
+                                formatter: segment.time + 'h',
+                                color: '#dc3545',
+                                fontWeight: 'bold',
+                                fontSize: 10
+                            }
+                        });
+                    }
+                });
+            }
+            
+            // Cost path (Green)
+            if (highlightPath.cost_details) {
+                // Check if paths are different to avoid complete overlap
+                const isSame = JSON.stringify(highlightPath.time_path) === JSON.stringify(highlightPath.cost_path);
+                
+                if (!isSame) {
+                    highlightPath.cost_details.forEach(segment => {
+                        const source = points.find(p => p.name === segment.source);
+                        const target = points.find(p => p.name === segment.target);
+                        if (source && target) {
+                            highlightLines.push({
+                                coords: [source.value, target.value],
+                                lineStyle: {
+                                    color: '#198754',
+                                    width: 3,
+                                    type: 'dashed',
+                                    opacity: 1,
+                                    curveness: 0.2
+                                },
+                                label: {
+                                    show: true,
+                                    position: 'middle',
+                                    formatter: '¥' + segment.cost,
+                                    color: '#198754',
+                                    fontWeight: 'bold',
+                                    fontSize: 10,
+                                    offset: [0, 15] // Offset label to avoid overlap
+                                }
+                            });
+                        }
+                    });
+                }
+            }
+        }
+
+        const option = {
+            backgroundColor: '#e8f4fc',
+            title: {
+                text: '中国高铁网络拓扑图',
+                left: 'center',
+                top: 20,
+                textStyle: { color: '#333' }
+            },
+            tooltip: {
+                trigger: 'item',
+                formatter: function (params) {
+                    return params.name;
+                }
+            },
+            geo: {
+                map: 'china',
+                roam: true,
+                zoom: 1.2,
+                label: {
+                    emphasis: { show: false }
+                },
+                itemStyle: {
+                    normal: {
+                        areaColor: '#fcfdfe',
+                        borderColor: '#a8c6df',
+                        borderWidth: 1
+                    },
+                    emphasis: {
+                        areaColor: '#dbebfb'
+                    }
+                }
+            },
+            series: [
+                // Background Lines
+                {
+                    type: 'lines',
+                    coordinateSystem: 'geo',
+                    data: lines,
+                    zlevel: 1,
+                    effect: {
+                        show: false
+                    }
+                },
+                // Highlight Lines
+                {
+                    type: 'lines',
+                    coordinateSystem: 'geo',
+                    data: highlightLines,
+                    zlevel: 2,
+                    effect: {
+                        show: true,
+                        period: 6,
+                        trailLength: 0.7,
+                        color: '#fff',
+                        symbolSize: 3
+                    }
+                },
+                // Cities
+                {
+                    type: 'scatter',
+                    coordinateSystem: 'geo',
+                    data: points,
+                    symbolSize: 8,
+                    label: {
+                        normal: {
+                            formatter: '{b}',
+                            position: 'right',
+                            show: true,
+                            fontSize: 10,
+                            color: '#333'
+                        },
+                        emphasis: { show: true }
+                    },
+                    itemStyle: {
+                        normal: { color: '#409EFF' }
+                    },
+                    zlevel: 3
+                }
+            ]
+        };
+
+        myChart.setOption(option);
+    }
+
+    function calculatePath() {
+        const start = document.getElementById('startCity').value;
+        const end = document.getElementById('endCity').value;
+        const algorithm = document.getElementById('algoSelect').value;
+        
+        if (start === "选择起点..." || end === "选择终点...") {
+            alert("请选择起点和终点城市");
+            return;
+        }
+        
+        fetch('/api/path', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ start, end, algorithm })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+            
+            // Show results
+            document.getElementById('routeResults').style.display = 'block';
+            
+            // Time Path
+            document.getElementById('timeVal').innerText = data.total_time.toFixed(1) + ' 小时';
+            document.getElementById('timePath').innerText = data.time_path.join(' → ');
+            document.getElementById('timeCost').innerText = data.time_path_cost;
+            document.getElementById('timeStops').innerText = data.time_path.length;
+            
+            // Cost Path
+            if (data.cost_path) {
+                document.getElementById('costVal').innerText = data.total_cost + ' 元';
+                document.getElementById('costPath').innerText = data.cost_path.join(' → ');
+                document.getElementById('costTime').innerText = data.cost_path_time.toFixed(1);
+                document.getElementById('costStops').innerText = data.cost_path.length;
+            } else {
+                // Handle BFS case where cost path might be same or hidden
+                document.getElementById('costVal').innerText = '-';
+                document.getElementById('costPath').innerText = '同上 (BFS模式)';
+                document.getElementById('costTime').innerText = '-';
+                document.getElementById('costStops').innerText = '-';
+            }
+            
+            // Recommendation
+            const recText = document.getElementById('recText');
+            if (algorithm === 'bfs') {
+                recText.innerText = "BFS 算法已为您找到中转次数最少的路径。";
+            } else if (JSON.stringify(data.time_path) === JSON.stringify(data.cost_path)) {
+                recText.innerText = "两方案路线相同，这是最优选择！";
+            } else {
+                const timeDiff = (data.cost_path_time - data.total_time).toFixed(1);
+                const costDiff = data.time_path_cost - data.total_cost;
+                recText.innerText = `方案A快 ${timeDiff} 小时，但贵 ${costDiff} 元。请按需选择。`;
+            }
+            
+            // Update Map
+            renderMap(graphData, data);
+        });
+    }
+
+    function loadHubs() {
+        fetch('/api/hubs')
+            .then(response => response.json())
+            .then(hubs => {
+                const container = document.getElementById('hubList');
+                container.innerHTML = '';
+                
+                const maxScore = hubs[0].score;
+                
+                hubs.forEach((hub, index) => {
+                    const percent = (hub.score / maxScore) * 100;
+                    const html = `
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between small mb-1">
+                                <span class="fw-bold">#${index + 1} ${hub.name}</span>
+                                <span class="text-muted">${hub.score.toFixed(4)}</span>
+                            </div>
+                            <div class="hub-bar">
+                                <div class="hub-bar-fill" style="width: ${percent}%"></div>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += html;
+                });
+                
+                // Trigger animation
+                setTimeout(() => {
+                    document.querySelectorAll('.hub-bar-fill').forEach(el => {
+                        // Force reflow
+                        el.style.display = 'none';
+                        el.offsetHeight; 
+                        el.style.display = 'block';
+                    });
+                }, 100);
+            });
+    }
+    
+    function resetMap() {
+        myChart.dispatchAction({
+            type: 'restore'
+        });
+    }
+    
+    // Load hubs initially
+    loadHubs();
+</script>
+
+</body>
+</html>
