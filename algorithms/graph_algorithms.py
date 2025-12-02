@@ -168,3 +168,128 @@ def get_path_details(G, path):
             'cost': data['cost']
         })
     return details
+
+def get_mst_steps(G, algorithm='prim', weight_key='cost'):
+    """
+    获取最小生成树的构建步骤（用于动画）
+    默认使用 'cost' (票价/建设成本) 作为权重
+    """
+    steps = []
+    
+    if algorithm == 'kruskal':
+        # Kruskal: 按边权排序，从小到大添加不构成环的边
+        edges = []
+        for u, v, data in G.edges(data=True):
+            edges.append((u, v, data.get(weight_key, 0)))
+        
+        # 按成本排序
+        edges.sort(key=lambda x: x[2])
+        
+        # 并查集初始化
+        parent = {node: node for node in G.nodes()}
+        def find(i):
+            if parent[i] == i: return i
+            parent[i] = find(parent[i])
+            return parent[i]
+        
+        def union(i, j):
+            root_i = find(i)
+            root_j = find(j)
+            if root_i != root_j:
+                parent[root_i] = root_j
+                return True
+            return False
+            
+        for u, v, w in edges:
+            if union(u, v):
+                steps.append({'u': u, 'v': v, 'weight': w, 'action': 'add'})
+            else:
+                # 记录被拒绝的边（构成环），可选用于动画展示
+                # steps.append({'u': u, 'v': v, 'weight': w, 'action': 'reject'})
+                pass
+                
+    elif algorithm == 'prim':
+        # Prim: 从一个节点开始，不断选择连接已访问集合和未访问集合的最小边
+        if not G.nodes():
+            return []
+            
+        start_node = list(G.nodes())[0] # 任意选择起点，例如北京
+        visited = {start_node}
+        candidate_edges = []
+        
+        # 初始化候选边
+        for neighbor, data in G[start_node].items():
+            heapq.heappush(candidate_edges, (data.get(weight_key, 0), start_node, neighbor))
+            
+        while candidate_edges:
+            weight, u, v = heapq.heappop(candidate_edges)
+            
+            if v not in visited:
+                visited.add(v)
+                steps.append({'u': u, 'v': v, 'weight': weight, 'action': 'add'})
+                
+                for neighbor, data in G[v].items():
+                    if neighbor not in visited:
+                        heapq.heappush(candidate_edges, (data.get(weight_key, 0), v, neighbor))
+    
+    return steps
+
+def find_multi_stop_path(G, start, end, waypoints):
+    """
+    多途径点路径规划
+    逻辑：Start -> Waypoint1 -> Waypoint2 -> ... -> End
+    """
+    full_route_points = [start] + waypoints + [end]
+    
+    # 结果容器
+    result = {
+        'start': start,
+        'end': end,
+        'waypoints': waypoints,
+        'time_path': [],
+        'total_time': 0,
+        'time_path_cost': 0,
+        'cost_path': [],
+        'total_cost': 0,
+        'cost_path_time': 0,
+        'time_details': [],
+        'cost_details': []
+    }
+    
+    try:
+        # 1. 计算时间最短的拼接路径
+        curr_path = []
+        for i in range(len(full_route_points)-1):
+            u, v = full_route_points[i], full_route_points[i+1]
+            # 计算分段路径
+            seg_path = nx.dijkstra_path(G, u, v, weight='time')
+            # 拼接（注意去除重复的连接点）
+            if i > 0:
+                curr_path.extend(seg_path[1:])
+            else:
+                curr_path.extend(seg_path)
+        
+        result['time_path'] = curr_path
+        result['total_time'] = get_path_weight(G, curr_path, 'time')
+        result['time_path_cost'] = get_path_weight(G, curr_path, 'cost')
+        result['time_details'] = get_path_details(G, curr_path)
+
+        # 2. 计算票价最低的拼接路径
+        curr_path = []
+        for i in range(len(full_route_points)-1):
+            u, v = full_route_points[i], full_route_points[i+1]
+            seg_path = nx.dijkstra_path(G, u, v, weight='cost')
+            if i > 0:
+                curr_path.extend(seg_path[1:])
+            else:
+                curr_path.extend(seg_path)
+                
+        result['cost_path'] = curr_path
+        result['total_cost'] = get_path_weight(G, curr_path, 'cost')
+        result['cost_path_time'] = get_path_weight(G, curr_path, 'time')
+        result['cost_details'] = get_path_details(G, curr_path)
+        
+        return result
+        
+    except nx.NetworkXNoPath:
+        return {'error': '路径不可达，请检查途径点是否连通'}

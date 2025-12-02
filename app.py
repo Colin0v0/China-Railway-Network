@@ -5,7 +5,9 @@ from core.network import create_railway_network
 from algorithms.graph_algorithms import (
     find_dual_paths, 
     calculate_betweenness_centrality,
-    calculate_advanced_metrics
+    calculate_advanced_metrics,
+    get_mst_steps,
+    find_multi_stop_path
 )
 from data.cities import CITIES, CITY_CATEGORIES
 
@@ -54,13 +56,26 @@ def calculate_path():
     data = request.json
     start = data.get('start')
     end = data.get('end')
+    waypoints = data.get('waypoints', [])
     algorithm = data.get('algorithm', 'dijkstra')
     
     if not start or not end:
         return jsonify({"error": "请选择起点和终点"}), 400
+    
+    if waypoints:
+        result = find_multi_stop_path(G, start, end, waypoints)
+    else:
+        result = find_dual_paths(G, start, end, algorithm)
         
-    result = find_dual_paths(G, start, end, algorithm)
     return jsonify(result)
+
+@app.route('/api/mst')
+def get_mst():
+    """获取最小生成树动画步骤"""
+    algo = request.args.get('algorithm', 'prim')
+    weight = request.args.get('weight', 'cost')
+    steps = get_mst_steps(G, algo, weight)
+    return jsonify({"steps": steps})
 
 @app.route('/api/hubs')
 def get_hubs():

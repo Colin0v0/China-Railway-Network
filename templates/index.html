@@ -106,6 +106,11 @@
                         <i class="fas fa-chart-bar me-1"></i>枢纽分析
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="pills-mst-tab" data-bs-toggle="pill" data-bs-target="#pills-mst" type="button">
+                        <i class="fas fa-project-diagram me-1"></i>最小生成树
+                    </button>
+                </li>
             </ul>
 
             <div class="tab-content" id="pills-tabContent">
@@ -119,6 +124,13 @@
                                     <option selected disabled>选择起点...</option>
                                 </select>
                             </div>
+                            
+                            <!-- Waypoints Section -->
+                            <div id="waypointsContainer"></div>
+                            <button class="btn btn-outline-secondary btn-sm w-100 mb-3 dashed-border" onclick="addWaypoint()">
+                                <i class="fas fa-plus me-1"></i>添加途径城市
+                            </button>
+
                             <div class="mb-3">
                                 <label class="form-label small text-muted">终点城市</label>
                                 <select class="form-select" id="endCity">
@@ -239,6 +251,49 @@
                         </div>
                     </div>
                 </div>
+                <!-- MST Tab -->
+                <div class="tab-pane fade" id="pills-mst">
+                    <div class="card card-custom">
+                        <div class="card-body">
+                            <h6 class="card-title mb-3">🌲 最小生成树 (MST)</h6>
+                            <p class="small text-muted">展示如何以最小成本连接所有城市</p>
+                            
+                            <div class="mb-3">
+                                <label class="form-label small text-muted">选择算法</label>
+                                <select class="form-select" id="mstAlgo">
+                                    <option value="prim">Prim 算法 (普里姆)</option>
+                                    <option value="kruskal">Kruskal 算法 (克鲁斯卡尔)</option>
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small text-muted">优化目标</label>
+                                <select class="form-select" id="mstWeight">
+                                    <option value="cost">最低票价 (Cost)</option>
+                                    <option value="time">最短时间 (Time)</option>
+                                </select>
+                            </div>
+                            
+                            <div class="alert alert-light small text-muted" id="mstDesc">
+                                <strong>Prim算法：</strong> 从一个节点出发，每次选择连接已访问集合和未访问集合的最小边。适合稠密图。
+                            </div>
+
+                            <button class="btn btn-success w-100" onclick="runMST()">
+                                <i class="fas fa-play me-2"></i>开始生成动画
+                            </button>
+                            
+                            <div class="mt-3 small text-muted">
+                                <div class="d-flex justify-content-between">
+                                    <span>当前步骤:</span>
+                                    <span id="mstStep">0 / 0</span>
+                                </div>
+                                <div class="progress mt-1" style="height: 5px;">
+                                    <div class="progress-bar bg-success" id="mstProgress" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             
             <div class="mt-auto pt-4 text-center">
@@ -274,12 +329,24 @@
 <script>
     let myChart = null;
     let graphData = null;
+    let allCities = []; // Store cities for waypoints
+    let mstInterval = null;
 
     // Initialize
     document.addEventListener('DOMContentLoaded', function() {
         initMap();
         loadCities();
         loadGraphData();
+        
+        // MST Algo description change
+        document.getElementById('mstAlgo').addEventListener('change', function(e) {
+            const desc = document.getElementById('mstDesc');
+            if (e.target.value === 'prim') {
+                desc.innerHTML = '<strong>Prim算法：</strong> 从一个节点出发，每次选择连接已访问集合和未访问集合的最小边。适合稠密图。';
+            } else {
+                desc.innerHTML = '<strong>Kruskal算法：</strong> 将所有边按权重排序，从小到大添加不构成环的边。适合稀疏图。';
+            }
+        });
     });
 
     function initMap() {
@@ -293,6 +360,7 @@
         fetch('/api/cities')
             .then(response => response.json())
             .then(cities => {
+                allCities = cities; // Save for later
                 const startSelect = document.getElementById('startCity');
                 const endSelect = document.getElementById('endCity');
                 
@@ -301,6 +369,32 @@
                     endSelect.add(new Option(city, city));
                 });
             });
+    }
+    
+    function addWaypoint() {
+        const container = document.getElementById('waypointsContainer');
+        const id = 'waypoint-' + Date.now();
+        
+        const div = document.createElement('div');
+        div.className = 'input-group mb-2';
+        div.id = id;
+        
+        let options = '<option selected disabled>途径城市...</option>';
+        allCities.forEach(city => {
+            options += `<option value="${city}">${city}</option>`;
+        });
+        
+        div.innerHTML = `
+            <span class="input-group-text bg-white"><i class="fas fa-map-marker-alt text-secondary"></i></span>
+            <select class="form-select waypoint-select">
+                ${options}
+            </select>
+            <button class="btn btn-outline-danger" onclick="document.getElementById('${id}').remove()">
+                <i class="fas fa-times"></i>
+            </button>
+        `;
+        
+        container.appendChild(div);
     }
 
     function loadGraphData() {
@@ -499,6 +593,14 @@
         const end = document.getElementById('endCity').value;
         const algorithm = document.getElementById('algoSelect').value;
         
+        // Collect waypoints
+        const waypoints = [];
+        document.querySelectorAll('.waypoint-select').forEach(select => {
+            if (select.value && select.value !== "途径城市...") {
+                waypoints.push(select.value);
+            }
+        });
+        
         if (start === "选择起点..." || end === "选择终点...") {
             alert("请选择起点和终点城市");
             return;
@@ -507,7 +609,7 @@
         fetch('/api/path', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ start, end, algorithm })
+            body: JSON.stringify({ start, end, waypoints, algorithm })
         })
         .then(response => response.json())
         .then(data => {
@@ -541,7 +643,9 @@
             
             // Recommendation
             const recText = document.getElementById('recText');
-            if (algorithm === 'bfs') {
+            if (waypoints.length > 0) {
+                recText.innerText = `已为您规划途径 ${waypoints.length} 个城市的路线。`;
+            } else if (algorithm === 'bfs') {
                 recText.innerText = "BFS 算法已为您找到中转次数最少的路径。";
             } else if (JSON.stringify(data.time_path) === JSON.stringify(data.cost_path)) {
                 recText.innerText = "两方案路线相同，这是最优选择！";
@@ -553,6 +657,101 @@
             
             // Update Map
             renderMap(graphData, data);
+        });
+    }
+
+    function runMST() {
+        const algorithm = document.getElementById('mstAlgo').value;
+        const weight = document.getElementById('mstWeight').value;
+        const btn = document.querySelector('#pills-mst button');
+        
+        // Reset UI
+        if (mstInterval) clearInterval(mstInterval);
+        btn.disabled = true;
+        document.getElementById('mstProgress').style.width = '0%';
+        document.getElementById('mstStep').innerText = '0 / 0';
+        
+        fetch('/api/mst?algorithm=' + algorithm + '&weight=' + weight)
+            .then(response => response.json())
+            .then(data => {
+                const steps = data.steps;
+                const totalSteps = steps.length;
+                let currentStep = 0;
+                
+                // Clear previous highlights
+                renderMap(graphData);
+                
+                const mstEdges = [];
+                
+                mstInterval = setInterval(() => {
+                    if (currentStep >= totalSteps) {
+                        clearInterval(mstInterval);
+                        btn.disabled = false;
+                        return;
+                    }
+                    
+                    const step = steps[currentStep];
+                    mstEdges.push(step);
+                    
+                    // Update Map
+                    updateMSTMap(mstEdges, weight);
+                    
+                    // Update UI
+                    currentStep++;
+                    const progress = (currentStep / totalSteps) * 100;
+                    document.getElementById('mstProgress').style.width = progress + '%';
+                    document.getElementById('mstStep').innerText = `${currentStep} / ${totalSteps}`;
+                    
+                }, 800); // 800ms per step for clearer animation
+            });
+    }
+
+    function updateMSTMap(edges, weightType) {
+        const points = graphData.nodes;
+        const highlightLines = [];
+        
+        edges.forEach(edge => {
+            const source = points.find(p => p.name === edge.u);
+            const target = points.find(p => p.name === edge.v);
+            if (source && target) {
+                highlightLines.push({
+                    coords: [source.value, target.value],
+                    lineStyle: {
+                        color: '#6610f2', // Indigo for MST
+                        width: 4,
+                        opacity: 1,
+                        curveness: 0.2
+                    },
+                    label: {
+                        show: true,
+                        formatter: weightType === 'time' ? edge.weight + 'h' : '¥' + edge.weight,
+                        position: 'middle',
+                        fontSize: 10,
+                        fontWeight: 'bold',
+                        color: '#6610f2'
+                    }
+                });
+            }
+        });
+        
+        // Update the highlight series (index 1)
+        myChart.setOption({
+            series: [
+                {}, // Ignore background lines
+                {
+                    data: highlightLines,
+                    effect: {
+                        show: true,
+                        color: '#fff',
+                        period: 4,
+                        symbol: 'circle',
+                        symbolSize: 4
+                    },
+                    lineStyle: {
+                        curveness: 0.2
+                    }
+                }
+            ]
         });
     }
 
