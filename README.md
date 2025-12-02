@@ -44,8 +44,8 @@ China Railway Network/
 ├── data/                # 城市与线路数据
 ├── static/              # 静态资源 (CSS, JS)
 ├── templates/           # HTML 模板
+├── visualization/       # 可视化辅助模块
 ├── app.py               # Flask Web 应用入口
-├── main.py              # (旧版) 控制台入口
 └── README.md            # 项目说明文档
 ```
 

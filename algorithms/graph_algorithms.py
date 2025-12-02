@@ -8,6 +8,7 @@
 import heapq
 import networkx as nx
 import math
+import time
 
 def heuristic(u, v, G):
     """
@@ -123,6 +124,33 @@ def calculate_betweenness_centrality(G, top_n=5):
     betweenness = nx.betweenness_centrality(G, weight='time', normalized=True)
     sorted_cities = sorted(betweenness.items(), key=lambda x: x[1], reverse=True)
     return sorted_cities[:top_n]
+
+def calculate_advanced_metrics(G, top_n=5):
+    """
+    计算高级网络指标
+    包含：度中心性、接近中心性、聚类系数
+    """
+    # 1. 度中心性 (Degree Centrality)
+    degree_cent = nx.degree_centrality(G)
+    top_degree = sorted(degree_cent.items(), key=lambda x: x[1], reverse=True)[:top_n]
+    
+    # 2. 接近中心性 (Closeness Centrality)
+    # 反映节点到其他所有节点的平均距离，越近说明去哪里都快
+    closeness_cent = nx.closeness_centrality(G, distance='time')
+    top_closeness = sorted(closeness_cent.items(), key=lambda x: x[1], reverse=True)[:top_n]
+    
+    # 3. 聚类系数 (Clustering Coefficient)
+    # 反映节点的邻居之间互连的程度，衡量网络的聚集性
+    clustering = nx.clustering(G)
+    avg_clustering = nx.average_clustering(G)
+    top_clustering = sorted(clustering.items(), key=lambda x: x[1], reverse=True)[:top_n]
+    
+    return {
+        'degree': top_degree,
+        'closeness': top_closeness,
+        'clustering': top_clustering,
+        'avg_clustering': avg_clustering
+    }
 
 def get_path_details(G, path):
     """获取路径详细信息"""

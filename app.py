@@ -2,7 +2,11 @@
 from flask import Flask, render_template, jsonify, request
 import networkx as nx
 from core.network import create_railway_network
-from algorithms.graph_algorithms import find_dual_paths, calculate_betweenness_centrality
+from algorithms.graph_algorithms import (
+    find_dual_paths, 
+    calculate_betweenness_centrality,
+    calculate_advanced_metrics
+)
 from data.cities import CITIES, CITY_CATEGORIES
 
 app = Flask(__name__)
@@ -65,6 +69,25 @@ def get_hubs():
     # 格式化为前端易用的格式
     formatted_hubs = [{"name": city, "score": score} for city, score in top_hubs]
     return jsonify(formatted_hubs)
+
+@app.route('/api/advanced-analysis')
+def get_advanced_analysis():
+    """获取高级网络分析指标"""
+    metrics = calculate_advanced_metrics(G, top_n=5)
+    
+    # 格式化数据
+    result = {
+        'degree': [{"name": c, "score": s} for c, s in metrics['degree']],
+        'closeness': [{"name": c, "score": s} for c, s in metrics['closeness']],
+        'clustering': [{"name": c, "score": s} for c, s in metrics['clustering']],
+        'avg_clustering': metrics['avg_clustering']
+    }
+    return jsonify(result)
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """全局异常处理"""
+    return jsonify({"error": str(e)}), 500
 
 def get_city_category(city_name):
     for cat, cities in CITY_CATEGORIES.items():

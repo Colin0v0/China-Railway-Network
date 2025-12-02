@@ -180,13 +180,37 @@
                 <div class="tab-pane fade" id="pills-analysis">
                     <div class="card card-custom">
                         <div class="card-body">
-                            <h6 class="card-title mb-3">🏆 网络枢纽 Top 5</h6>
-                            <p class="small text-muted">基于介数中心性 (Betweenness Centrality) 算法分析</p>
-                            <div id="hubList">
-                                <!-- Hub items will be injected here -->
+                            <h6 class="card-title mb-3">🏆 综合网络分析</h6>
+                            
+                            <ul class="nav nav-tabs nav-fill small mb-3" id="analysisTabs" role="tablist">
+                                <li class="nav-item">
+                                    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-betweenness" type="button">介数中心性</button>
+                                </li>
+                                <li class="nav-item">
+                                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-degree" type="button">度中心性</button>
+                                </li>
+                                <li class="nav-item">
+                                    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-closeness" type="button">接近中心性</button>
+                                </li>
+                            </ul>
+
+                            <div class="tab-content">
+                                <div class="tab-pane fade show active" id="tab-betweenness">
+                                    <p class="small text-muted mb-2">衡量节点作为"桥梁"的重要性</p>
+                                    <div id="hubList"></div>
+                                </div>
+                                <div class="tab-pane fade" id="tab-degree">
+                                    <p class="small text-muted mb-2">衡量节点的直接连接数量（枢纽程度）</p>
+                                    <div id="degreeList"></div>
+                                </div>
+                                <div class="tab-pane fade" id="tab-closeness">
+                                    <p class="small text-muted mb-2">衡量节点到其他所有节点的平均距离</p>
+                                    <div id="closenessList"></div>
+                                </div>
                             </div>
-                            <button class="btn btn-outline-primary w-100 mt-3 btn-sm" onclick="loadHubs()">
-                                <i class="fas fa-sync-alt me-1"></i>重新分析
+
+                            <button class="btn btn-outline-primary w-100 mt-3 btn-sm" onclick="loadAdvancedAnalysis()">
+                                <i class="fas fa-sync-alt me-1"></i>刷新分析数据
                             </button>
                         </div>
                     </div>
@@ -202,6 +226,10 @@
                                 <li class="mb-2 d-flex justify-content-between">
                                     <span>高铁线路</span>
                                     <span class="fw-bold" id="edgeCount">-</span>
+                                </li>
+                                <li class="mb-2 d-flex justify-content-between">
+                                    <span>平均聚类系数</span>
+                                    <span class="fw-bold" id="avgClustering">-</span>
                                 </li>
                                 <li class="d-flex justify-content-between">
                                     <span>连通性</span>
@@ -429,10 +457,14 @@
                     zlevel: 2,
                     effect: {
                         show: true,
-                        period: 6,
-                        trailLength: 0.7,
+                        period: 4,
+                        trailLength: 0.5,
                         color: '#fff',
-                        symbolSize: 3
+                        symbol: 'arrow',
+                        symbolSize: 6
+                    },
+                    lineStyle: {
+                        curveness: 0.2
                     }
                 },
                 // Cities
@@ -524,41 +556,52 @@
         });
     }
 
-    function loadHubs() {
-        fetch('/api/hubs')
+    function loadAdvancedAnalysis() {
+        fetch('/api/advanced-analysis')
             .then(response => response.json())
-            .then(hubs => {
-                const container = document.getElementById('hubList');
-                container.innerHTML = '';
+            .then(data => {
+                renderRankList('hubList', data.degree); // Reusing degree for betweenness tab temporarily or fetch real betweenness
+                // Wait, the API returns degree, closeness, clustering.
+                // I need to fetch betweenness separately or include it in advanced analysis.
+                // Let's fetch betweenness as well or just use the existing /api/hubs for the first tab.
                 
-                const maxScore = hubs[0].score;
+                // Actually, let's just fetch /api/hubs for the first tab and /api/advanced-analysis for others.
+                // But to keep it simple, I'll fetch both here.
                 
-                hubs.forEach((hub, index) => {
-                    const percent = (hub.score / maxScore) * 100;
-                    const html = `
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between small mb-1">
-                                <span class="fw-bold">#${index + 1} ${hub.name}</span>
-                                <span class="text-muted">${hub.score.toFixed(4)}</span>
-                            </div>
-                            <div class="hub-bar">
-                                <div class="hub-bar-fill" style="width: ${percent}%"></div>
-                            </div>
-                        </div>
-                    `;
-                    container.innerHTML += html;
+                fetch('/api/hubs').then(res => res.json()).then(hubs => {
+                    renderRankList('hubList', hubs);
                 });
+
+                renderRankList('degreeList', data.degree);
+                renderRankList('closenessList', data.closeness);
                 
-                // Trigger animation
-                setTimeout(() => {
-                    document.querySelectorAll('.hub-bar-fill').forEach(el => {
-                        // Force reflow
-                        el.style.display = 'none';
-                        el.offsetHeight; 
-                        el.style.display = 'block';
-                    });
-                }, 100);
+                document.getElementById('avgClustering').innerText = data.avg_clustering.toFixed(4);
             });
+    }
+
+    function renderRankList(containerId, data) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+        
+        if (!data || data.length === 0) return;
+        
+        const maxScore = data[0].score;
+        
+        data.forEach((item, index) => {
+            const percent = (item.score / maxScore) * 100;
+            const html = `
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="fw-bold">#${index + 1} ${item.name}</span>
+                        <span class="text-muted">${item.score.toFixed(4)}</span>
+                    </div>
+                    <div class="hub-bar">
+                        <div class="hub-bar-fill" style="width: ${percent}%"></div>
+                    </div>
+                </div>
+            `;
+            container.innerHTML += html;
+        });
     }
     
     function resetMap() {
@@ -568,7 +611,7 @@
     }
     
     // Load hubs initially
-    loadHubs();
+    loadAdvancedAnalysis();
 </script>
 
 </body>
